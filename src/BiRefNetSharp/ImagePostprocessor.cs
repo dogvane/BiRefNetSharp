@@ -11,11 +11,13 @@ public static class ImagePostprocessor
 {
     /// <summary>
     /// Postprocesses the model output to create a segmentation mask.
+    /// Assumes model output is square (HxH). For non-square outputs, use the overload that accepts explicit dimensions.
     /// </summary>
     /// <param name="output">Raw model output as a float array.</param>
-    /// <param name="originalWidth">Original image width.</param>
-    /// <param name="originalHeight">Original image height.</param>
+    /// <param name="originalWidth">Original image width to resize the mask to.</param>
+    /// <param name="originalHeight">Original image height to resize the mask to.</param>
     /// <returns>Segmentation mask as a grayscale image.</returns>
+    /// <exception cref="ArgumentException">Thrown when output array is not square or dimensions are invalid.</exception>
     public static Image<L8> PostprocessOutput(float[] output, int originalWidth, int originalHeight)
     {
         if (output == null || output.Length == 0)
@@ -28,22 +30,72 @@ public static class ImagePostprocessor
             throw new ArgumentException("Image dimensions must be positive.");
         }
 
-        // Calculate the dimensions of the output
+        // Calculate the dimensions of the output (assume square)
         int outputSize = (int)Math.Sqrt(output.Length);
+        
+        // Validate that the output is actually square
+        if (outputSize * outputSize != output.Length)
+        {
+            throw new ArgumentException(
+                $"Output array length ({output.Length}) is not a perfect square. " +
+                "Use the overload that accepts explicit width and height for non-square outputs.",
+                nameof(output));
+        }
+
+        return PostprocessOutput(output, outputSize, outputSize, originalWidth, originalHeight);
+    }
+
+    /// <summary>
+    /// Postprocesses the model output to create a segmentation mask with explicit output dimensions.
+    /// </summary>
+    /// <param name="output">Raw model output as a float array.</param>
+    /// <param name="outputWidth">Width of the model output tensor.</param>
+    /// <param name="outputHeight">Height of the model output tensor.</param>
+    /// <param name="targetWidth">Target width to resize the mask to.</param>
+    /// <param name="targetHeight">Target height to resize the mask to.</param>
+    /// <returns>Segmentation mask as a grayscale image.</returns>
+    public static Image<L8> PostprocessOutput(
+        float[] output, 
+        int outputWidth, 
+        int outputHeight, 
+        int targetWidth, 
+        int targetHeight)
+    {
+        if (output == null || output.Length == 0)
+        {
+            throw new ArgumentException("Output array cannot be null or empty.", nameof(output));
+        }
+
+        if (outputWidth <= 0 || outputHeight <= 0)
+        {
+            throw new ArgumentException("Output dimensions must be positive.");
+        }
+
+        if (targetWidth <= 0 || targetHeight <= 0)
+        {
+            throw new ArgumentException("Target dimensions must be positive.");
+        }
+
+        if (output.Length != outputWidth * outputHeight)
+        {
+            throw new ArgumentException(
+                $"Output array length ({output.Length}) does not match expected dimensions " +
+                $"({outputWidth}x{outputHeight}={outputWidth * outputHeight}).");
+        }
 
         // Create a temporary mask image at model output size
-        var tempMask = new Image<L8>(outputSize, outputSize);
+        var tempMask = new Image<L8>(outputWidth, outputHeight);
 
         // Apply sigmoid activation and convert to byte values
         tempMask.ProcessPixelRows(accessor =>
         {
-            for (int y = 0; y < outputSize; y++)
+            for (int y = 0; y < outputHeight; y++)
             {
                 var pixelRow = accessor.GetRowSpan(y);
 
-                for (int x = 0; x < outputSize; x++)
+                for (int x = 0; x < outputWidth; x++)
                 {
-                    int index = y * outputSize + x;
+                    int index = y * outputWidth + x;
                     float value = output[index];
 
                     // Apply sigmoid activation
@@ -57,10 +109,10 @@ public static class ImagePostprocessor
             }
         });
 
-        // Resize to original dimensions if needed
-        if (outputSize != originalWidth || outputSize != originalHeight)
+        // Resize to target dimensions if needed
+        if (outputWidth != targetWidth || outputHeight != targetHeight)
         {
-            tempMask.Mutate(ctx => ctx.Resize(originalWidth, originalHeight));
+            tempMask.Mutate(ctx => ctx.Resize(targetWidth, targetHeight));
         }
 
         return tempMask;
