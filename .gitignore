@@ -398,6 +398,9 @@ FodyWeavers.xsd
 
 # VS Code files for those working on multiple tools
 .vscode/*
+ 
+# Local NuGet packaging instructions (private)
+NUGET_PACKAGING.md
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
@@ -416,3 +419,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# BiRefNetSharp specific
+models/
+output/
